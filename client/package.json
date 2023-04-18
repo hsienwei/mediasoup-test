@@ -1,0 +1,20 @@
+{
+  "name": "mediasoup-test-client",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start:dev": "live-server --port=8888",
+    "build": "esbuild .\\client.ts --bundle --sourcemap --outfile=client.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mediasoup-client": "^3.6.84"
+  },
+  "devDependencies": {
+    "esbuild": "^0.17.17",
+    "live-server": "^1.2.2"
+  }
+}
