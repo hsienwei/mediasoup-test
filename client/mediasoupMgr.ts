@@ -48,11 +48,6 @@ export default  class MediasoupMgr{
         }
     }
 
-
-    // public startConsumer() {
-        
-    // }
-
     public async onRespProducerID(data: any) {
         console.log("respRoomProducer")
         const device = new Device();

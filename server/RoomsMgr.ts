@@ -10,8 +10,8 @@ import WebSocket from "ws"
 
 interface Room {
   router: types.Router;
-  transport: types.WebRtcTransport;
-  transportC: types.WebRtcTransport;
+  transport?: types.WebRtcTransport;
+  transportC?: types.WebRtcTransport;
   name: string;
   producerID?: string;
 }
@@ -42,17 +42,9 @@ export default class RoomsMgr {
     private rooms: Room[] = [];
 
     public async init() {
-
         mediasoup.observer.on("newworker", (worker) => {
             console.log("new worker created [pid:%d]", worker.pid);
-            worker.getResourceUsage()
-            .then( (usage: WorkerResourceUsage) => {
-                console.log(usage);
-            } )
-            
         });
-
-        
 
         this.worker = await mediasoup.createWorker(
             config.mediasoup.workerSettings as types.WorkerSettings
@@ -66,16 +58,16 @@ export default class RoomsMgr {
             console.log("============= router new ==========");
         });
 
-         this.webRtcServer = await this.worker.createWebRtcServer(
-             config.mediasoup.webRtcServerOptions as types.WebRtcServerOptions
-         );
+        this.webRtcServer = await this.worker.createWebRtcServer(
+            config.mediasoup.webRtcServerOptions as types.WebRtcServerOptions
+        );
     }
 
 
     private async createTransport(): Promise<[types.Router, types.WebRtcTransport, types.WebRtcTransport]>
     {
-        if(this.worker === null)    return Promise.reject("worker is null");
-         if(this.webRtcServer === null)    return Promise.reject("webRtcServer is null");
+        if (this.worker === null) return Promise.reject("worker is null");
+        if (this.webRtcServer === null) return Promise.reject("webRtcServer is null");
 
         const router = await this.worker.createRouter(config.mediasoup.routerOptions as types.RouterOptions);
 
@@ -102,6 +94,68 @@ export default class RoomsMgr {
         );
 
         return [router, transport, transportCosumer];
+    
+    
+    }
+
+    public async createR(roomName: string): Promise<boolean> {
+        if(roomName.length === 0)
+        Promise.reject("room name illegal")
+
+        if (this.worker === null) return Promise.reject("worker is null");
+        if (this.webRtcServer === null) return Promise.reject("webRtcServer is null");
+
+
+        if( this.rooms.find( (room) => {
+            return room.name === roomName;
+        }))
+            return false;
+
+        const router = await this.worker.createRouter(config.mediasoup.routerOptions as types.RouterOptions);
+
+        const room: Room = {
+            router: router,
+            name: roomName,
+        };
+        this.rooms.push(room);
+
+        return true;
+    }
+
+    public async createP(roomName: string): Promise<{result: boolean, roomp?: RoomTransportProperty}> {
+
+
+        const room: Room | undefined = this.rooms.find( (room) => {
+            return room.name === roomName;
+        });
+        
+        if(room === undefined)    return {result: false};
+
+        if (this.webRtcServer === null) return {result: false};
+
+        const transport = await room.router.createWebRtcTransport(
+            {
+                // Use webRtcServer or listenIps
+                webRtcServer: this.webRtcServer,
+                //listenIps: [{ ip: "127.0.0.1"/*, announcedIp: "88.12.10.41" */}],
+                enableUdp: true,
+                enableTcp: true,
+                preferUdp: true
+            }
+        );
+
+        room.transport = transport;
+
+        const property: RoomTransportProperty =
+        {
+            id: room.transport.id,
+            iceParameters: room.transport.iceParameters,
+            iceCandidates: room.transport.iceCandidates,
+            dtlsParameters: room.transport.dtlsParameters
+        };
+                    
+
+        return {result: true, roomp: property};
     }
 
     public async createRoom(roomName: string): Promise<RoomTransportProperty> {
@@ -133,26 +187,35 @@ export default class RoomsMgr {
 
                 transportConsume.observer.on("newconsumer", (consumer) => {
                     console.log(`consumer added ${consumer.id}`);
-                   // room.producerID = comsumer.id;
                 });
 
                 this.rooms.push(room);
-                const property: RoomTransportProperty = 
-                {
-                    id: room.transport.id,
-                    iceParameters : room.transport.iceParameters,
-                    iceCandidates: room.transport.iceCandidates,
-                    dtlsParameters: room.transport.dtlsParameters
-                };
-                
 
-                (property as any)["consumerproperty"] = {
-                    id: room.transportC.id,
-                    iceParameters : room.transportC.iceParameters,
-                    iceCandidates: room.transportC.iceCandidates,
-                    dtlsParameters: room.transportC.dtlsParameters
-                };
-                resolve(property);
+                if(room.transport)
+                {
+                    const property: RoomTransportProperty = 
+                    {
+                        id: room.transport.id,
+                        iceParameters : room.transport.iceParameters,
+                        iceCandidates: room.transport.iceCandidates,
+                        dtlsParameters: room.transport.dtlsParameters
+                    };
+                    
+                    if( room.transportC )
+                    {
+                    (property as any)["consumerproperty"] = {
+                        id: room.transportC.id,
+                        iceParameters : room.transportC.iceParameters,
+                        iceCandidates: room.transportC.iceCandidates,
+                        dtlsParameters: room.transportC.dtlsParameters
+                    };
+                    }
+                    resolve(property);
+                }
+                else
+                {
+                    reject();
+                }
             })
             .catch( () => {
                 reject("room create failed.");
@@ -167,21 +230,21 @@ export default class RoomsMgr {
         const room = this.rooms.find((room) => {
             
             if(isSend)
-                return room.transport.id === transportId ;
+                return room.transport?.id === transportId ;
             else
-                return room.transportC.id === transportId ;
+                return room.transportC?.id === transportId ;
         });
         console.log(room?.name);
         console.log(dtlsParameters.fingerprints);
         if(isSend)
         {
             if(room !== undefined)
-                room.transport.connect({dtlsParameters});
+                room.transport?.connect({dtlsParameters});
         }
         else
         {
             if(room !== undefined)
-                room.transportC.connect({dtlsParameters});
+                room.transportC?.connect({dtlsParameters});
         }
             
     }
@@ -197,7 +260,7 @@ export default class RoomsMgr {
         if(room.producerID === undefined)
             return;
 
-        const consumer = await room.transportC.consume({
+        const consumer = await room.transportC?.consume({
             producerId: room.producerID,
             rtpCapabilities: room.router.rtpCapabilities
         });
@@ -207,9 +270,9 @@ export default class RoomsMgr {
             {
                 type: "respRoomProducer",
                 data: {
-                    id: consumer.id,//consumerid   room.transport.id,
-                    producerId: consumer.producerId,
-                    rtpParameters: consumer.rtpParameters,      
+                    id: consumer?.id,//consumerid   room.transport.id,
+                    producerId: consumer?.producerId,
+                    rtpParameters: consumer?.rtpParameters,      
                 } 
             }));
     }
@@ -217,13 +280,13 @@ export default class RoomsMgr {
     public produceStart(data: TransportStartData, ws: WebSocket) {
         const { transportId, kind, rtpParameters, appData} = data;
         const room = this.rooms.find((room) => {
-            return room.transport.id === transportId ;
+            return room.transport?.id === transportId ;
         });
 
         
         if(room === undefined)    return;
         
-        room.transport.produce({
+        room.transport?.produce({
             kind,
             rtpParameters,
             appData
@@ -245,7 +308,7 @@ export default class RoomsMgr {
     public getList(): string[]
     {
         return this.rooms.map( (room) => {
-            return room.name + "_" + room.transport.id;
+            return room.name + "_" + room.transport?.id;
         });
     }
 
